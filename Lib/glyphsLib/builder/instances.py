@@ -57,12 +57,32 @@ def to_designspace_instances(self):
     """Write instance data from self.font to self.designspace."""
     for instance in self.font.instances:
         if instance.type == InstanceType.VARIABLE:
+            if is_instance_active(instance):
+                _to_designspace_variable_instance(self, instance)
             continue
         if self.minimize_glyphs_diffs or (
             is_instance_active(instance)
             and _is_instance_included_in_family(self, instance)
         ):
             _to_designspace_instance(self, instance)
+
+
+def _to_designspace_variable_instance(self, instance):
+    ufo_variable_font = self.designspace.addVariableFontDescriptor(name=instance.name)
+    ufo_variable_font.familyName = instance.familyName
+    ufo_variable_font.styleName = instance.name
+    ufo_variable_font.postScriptFontName = (
+        instance.properties.get("postscriptFontName")
+        or instance.customParameters["postscriptFontName"]
+    )
+    if fileName := instance.customParameters.get("fileName"):
+        ufo_variable_font.filename = fileName + ".ufo"
+    if parameters := _to_custom_parameters(instance):
+        ufo_variable_font.lib[CUSTOM_PARAMETERS_KEY] = parameters
+    if properties := _to_properties(instance):
+        ufo_variable_font.lib[PROPERTIES_KEY] = properties
+
+    self.designspace.addVariableFont(ufo_variable_font)
 
 
 def _to_designspace_instance(self, instance):
