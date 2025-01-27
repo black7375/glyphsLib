@@ -68,7 +68,8 @@ class Parser:
         return [self._parse(x, new_type) for x in d]
 
     def parse_into_object(self, res, value):
-        return self._parse_dict_into_object(res, value)
+        processed_value = self._process_codepage_ranges(value)
+        return self._parse_dict_into_object(res, processed_value)
 
     def _parse_dict(self, text, new_type=None):
         """Parse a dictionary from source text starting at i."""
@@ -98,6 +99,68 @@ class Parser:
                     res[name] = result
             else:
                 res[name] = d[name]
+
+    def _process_codepage_ranges(self, value):
+        codepages = None
+        for param in value.get("customParameters", []):
+            if param["name"] == "codePageRanges" or param["name"] == "openTypeOS2CodePageRanges":
+                codepages = param["value"]
+                break
+        
+        if codepages is None:
+            return value
+        
+        supported_codepages = []
+        unsupported_bits = []
+        
+        CODEPAGE_RANGES = glyphsLib.builder.constants.CODEPAGE_RANGES
+        CODEPAGE_RANGES_KEYS = [str(key) for key in CODEPAGE_RANGES.keys()]
+        
+        for page in codepages:
+            if str(page) in CODEPAGE_RANGES_KEYS:
+                supported_codepages.append(int(page))
+            else:
+                unsupported_bits.append(self._convert_bits(page))
+    
+        result = value.copy()
+        new_params = []
+        
+        for param in result["customParameters"]:
+            if param["name"] != "codePageRanges" and param["name"] != "openTypeOS2CodePageRanges":
+                new_params.append(param)
+    
+        if supported_codepages:
+            new_params.append({
+                "name": "codePageRanges",
+                "value": supported_codepages
+            })
+    
+        if unsupported_bits:
+            new_params.append({
+                "name": "codePageRangesUnsupportedBits",
+                "value": unsupported_bits
+            })
+         
+        result["customParameters"] = new_params
+        return result
+
+    def _convert_bits(self, value):
+        if isinstance(value, int):
+            return value
+    
+        if isinstance(value, str):
+            if value.isdigit():
+                return int(value)
+            elif value.startswith('bit '):
+                number_str = value[4:]
+                try:
+                    return int(number_str)
+                except ValueError:
+                    raise ValueError(f"'{value}' is not in correct format. A number must follow after 'bit '.")
+            else:
+                raise ValueError(f"'{value}'is neither a number nor 'bit ' format.")
+        
+        raise TypeError(f"Unsupported type: {type(value)}")
 
 
 def load_glyphspackage(package_dir):
